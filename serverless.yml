@@ -1,0 +1,37 @@
+service: labs-feedback
+
+frameworkVersion: ">=1.2.0 <2.0.0"
+
+custom:
+  stage: "${opt:stage, self:provider.stage}"
+  p ythonRequirements:
+    dockerizePip: non-linux
+
+provider:
+  name: aws
+  runtime: python3.6
+  timeout: 180  
+  iamRoleStatements: # permissions for all of your functions can be set here
+    - Effect: "Allow"
+      Action:
+        - "ssm:GetParameter"
+      Resource: "arn:aws:ssm:*:715633473519:parameter/com.neo4j.labs.feedback.*"
+
+plugins:
+  - serverless-python-requirements
+functions:
+    feedback:
+        name: Labs-Feedback
+        handler: handler.feedback
+        timeout: 30
+        events:
+            - http: 
+               method: post
+               path: Feedback
+               cors: true 
+
+package:
+  exclude:
+    - node_modules/**
+    - a/**
+    - .git/**
