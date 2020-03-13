@@ -35,25 +35,27 @@ def post_feedback(params):
     with db_driver.session() as session:
         result = session.run(post_feedback_query, params)
         print(result.summary().counters)
-        return True  
+        return True
 
 def feedback(request, context):
     print("request:", request, "context:", context)
 
     form_data = parse.parse_qsl(request["body"])
-    page = request["headers"]["Referer"]
 
     params = {key:value for key,value in form_data}
     params["helpful"] = str2bool(params["helpful"])
-    params["userAgent"] = request["headers"]["User-Agent"]
+    page = params["url"]
 
-    print(page, form_data)
+    params["userAgent"] = request["headers"]["User-Agent"]
+    params["referer"] = request["headers"]["Referer"]
+
+    print(page, params)
 
     post_feedback({"params": params, "page": page})
 
     return {
-        "statusCode": 200, 
-        "body": json.dumps({"message" :"Foo"}), 
+        "statusCode": 200,
+        "body": json.dumps({"message" :"Foo"}),
         "headers": {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Credentials': True,
