@@ -10,7 +10,7 @@ custom:
 provider:
   name: aws
   runtime: python3.6
-  timeout: 180  
+  timeout: 180
   iamRoleStatements: # permissions for all of your functions can be set here
     - Effect: "Allow"
       Action:
@@ -25,10 +25,18 @@ functions:
         handler: handler.feedback
         timeout: 30
         events:
-            - http: 
+            - http:
                method: post
                path: Feedback
-               cors: true 
+               cors: true
+    feedback-page:
+        name: Labs-FeedbackPage
+        handler: handler.feedback_page
+        timeout: 30
+        events:
+            - http:
+               method: get
+               path: FeedbackPage
 
 package:
   exclude:

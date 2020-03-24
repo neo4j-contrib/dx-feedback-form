@@ -3,8 +3,13 @@ from urllib import parse
 import boto3
 from neo4j import GraphDatabase
 from retrying import retry
+import datetime
+
+import flask
+from flask import render_template
 
 ssmc = boto3.client('ssm')
+app = flask.Flask('feedback form')
 
 
 def get_ssm_param(key):
@@ -43,9 +48,8 @@ def feedback(request, context):
     form_data = parse.parse_qsl(request["body"])
 
     params = {key:value for key,value in form_data}
-    params["helpful"] = str2bool(params["helpful"])
     page = params["url"]
-
+    params["helpful"] = str2bool(params["helpful"])
     params["userAgent"] = request["headers"]["User-Agent"]
     params["referer"] = request["headers"]["Referer"]
 
@@ -61,3 +65,28 @@ def feedback(request, context):
             'Access-Control-Allow-Credentials': True,
             }
     }
+
+def feedback_page(event, context):
+    with db_driver.session() as session:
+        result = session.run("""
+        MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page)
+        RETURN feedback, page
+        ORDER BY feedback.timestamp DESC
+        LIMIT 50
+        """)
+
+        rows = [{"helpful": row["feedback"]["helpful"],
+                 "information": row["feedback"]["moreInformation"],
+                 "uri": row["page"]["uri"],
+                 "timestamp": row["feedback"]["timestamp"].to_native().strftime("%d %b %Y")}
+                for row in result]
+
+    with app.app_context():
+        rendered = render_template('feedback-form.html', rows=rows)
+    response = {
+        "statusCode": 200,
+        "body": rendered,
+        "headers": { 'Content-Type': 'text/html' }
+    }
+
+    return response
