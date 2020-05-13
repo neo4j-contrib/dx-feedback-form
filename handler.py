@@ -1,15 +1,14 @@
+import base64
+import datetime
 import json
 import logging
 from urllib import parse
+
 import boto3
+import flask
+from dateutil import parser
 from neo4j import GraphDatabase
 from retrying import retry
-import datetime
-
-import flask
-from flask import render_template
-from dateutil import parser
-import base64
 
 ssmc = boto3.client('ssm')
 app = flask.Flask('feedback form')
@@ -34,11 +33,12 @@ host_port = get_ssm_param('com.neo4j.labs.feedback.dbhostport')
 user = get_ssm_param('com.neo4j.labs.feedback.dbuser')
 password = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
 
-db_driver = GraphDatabase.driver("bolt+routing://%s" % (host_port), auth=(user, password),
-                                 max_retry_time=15)
+db_driver = GraphDatabase.driver(f"bolt+routing://{host_port}", auth=(user, password), max_retry_time=15)
 
 post_feedback_query = """
+MATCH (project:Project {name: $project})
 MERGE (page:Page {uri: $page})
+MERGE (page)-[:PROJECT]->(project)
 CREATE (feedback:Feedback)
 SET feedback += $params, feedback.timestamp = datetime()
 CREATE (page)-[:HAS_FEEDBACK]->(feedback)
@@ -53,6 +53,12 @@ def post_feedback(params):
         return True
 
 
+def determine_project(page):
+    if "/docs/labs/neo4j-streams" in page:
+        return "neo4j-streams"
+    return "apoc"
+
+
 def feedback(request, context):
     print("request:", request, "context:", context)
 
@@ -60,13 +66,14 @@ def feedback(request, context):
 
     params = {key: value for key, value in form_data}
     page = params["url"]
+    project = determine_project(page)
     params["helpful"] = str2bool(params["helpful"])
     params["userAgent"] = request["headers"]["User-Agent"]
     params["referer"] = request["headers"]["Referer"]
 
     print(page, params)
 
-    post_feedback({"params": params, "page": page})
+    post_feedback({"params": params, "page": page, "project": project})
 
     return {
         "statusCode": 200,
@@ -76,6 +83,7 @@ def feedback(request, context):
             'Access-Control-Allow-Credentials': True,
         }
     }
+
 
 def feedback_api(event, context):
     qs = event.get("multiValueQueryStringParameters")
