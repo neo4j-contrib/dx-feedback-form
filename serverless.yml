@@ -36,7 +36,11 @@ functions:
         events:
             - http:
                method: get
-               path: Feedback
+               path: Feedback/{project}
+               request:
+                parameters:
+                  paths:
+                    project: true
     page-api:
         name: Labs-PageAPI
         handler: handler.page_api

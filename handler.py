@@ -86,6 +86,15 @@ def feedback(request, context):
 
 
 def feedback_api(event, context):
+    path_parameters = event.get("pathParameters")
+
+    if not path_parameters:
+        return {
+            "statusCode": 404
+        }
+
+    project = path_parameters.get("project")
+
     qs = event.get("multiValueQueryStringParameters")
     if qs and qs.get("date"):
         now = parser.parse(qs["date"][0])
@@ -95,9 +104,9 @@ def feedback_api(event, context):
     logger.info(f"Retrieving feedback for {now}")
 
     with db_driver.session() as session:
-        params = {"year": now.year, "month": now.month}
+        params = {"year": now.year, "month": now.month, "project": project}
         result = session.run("""
-        MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page)
+        MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page)-[:PROJECT]->(:Project {name: $project})
         WHERE datetime({year:$year, month:$month+1}) > feedback.timestamp >= datetime({year:$year, month:$month })
         RETURN feedback, page
         ORDER BY feedback.timestamp DESC
