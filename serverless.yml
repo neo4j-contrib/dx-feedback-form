@@ -29,14 +29,38 @@ functions:
                method: post
                path: Feedback
                cors: true
-    feedback-page:
-        name: Labs-FeedbackPage
-        handler: handler.feedback_page
+    feedback-api:
+        name: Labs-FeedbackAPI
+        handler: handler.feedback_api
         timeout: 30
         events:
             - http:
                method: get
-               path: FeedbackPage
+               path: Feedback
+    page-api:
+        name: Labs-PageAPI
+        handler: handler.page_api
+        timeout: 30
+        events:
+            - http:
+               method: get
+               path: Page/{id}
+               request:
+                 parameters:
+                   paths:
+                     id: true
+    fire-api:
+        name: Labs-OnFireAPI
+        handler: handler.fire_api
+        timeout: 30
+        events:
+            - http:
+               method: get
+               path: Fire
+               request:
+                 parameters:
+                   paths:
+                     id: true
 
 package:
   exclude:
