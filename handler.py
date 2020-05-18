@@ -98,7 +98,7 @@ def feedback_api(event, context):
             "statusCode": 404
         }
 
-    project = path_parameters.get("project")
+    project = path_parameters.get("project").replace("@graphapps-", "@graphapps/")
 
     qs = event.get("multiValueQueryStringParameters")
     if qs and qs.get("date"):
@@ -188,7 +188,7 @@ def fire_api(event, context):
             "statusCode": 404
         }
 
-    project = path_parameters.get("project")
+    project = path_parameters.get("project").replace("@graphapps-", "@graphapps/")
 
     with db_driver.session() as session:
         result = session.run("""
