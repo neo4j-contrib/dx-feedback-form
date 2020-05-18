@@ -60,11 +60,11 @@ functions:
         events:
             - http:
                method: get
-               path: Fire
+               path: Fire/{project}
                request:
                  parameters:
                    paths:
-                     id: true
+                     project: true
 
 package:
   exclude:

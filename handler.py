@@ -176,9 +176,18 @@ def page_api(event, context):
 
 
 def fire_api(event, context):
+    path_parameters = event.get("pathParameters")
+
+    if not path_parameters:
+        return {
+            "statusCode": 404
+        }
+
+    project = path_parameters.get("project")
+
     with db_driver.session() as session:
         result = session.run("""
-        MATCH (page:Page)-[:HAS_FEEDBACK]->(feedback)
+        MATCH (project:Project {name: $project})<-[:PROJECT]-(page:Page)-[:HAS_FEEDBACK]->(feedback)
         WITH page, collect(feedback) AS allFeedback
         WITH page, 
              size([f in allFeedback WHERE f.helpful]) AS helpful, 
@@ -196,7 +205,7 @@ def fire_api(event, context):
         1+(1/n*z*z) AS under
         RETURN page, notHelpful, helpful, (left-right) / under AS unhelpfulness                
         ORDER BY unhelpfulness desc
-        """)
+        """, {"project": project})
 
         rows = [{"uri": row["page"]["uri"],
                  "helpful": row["helpful"],
