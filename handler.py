@@ -65,11 +65,16 @@ def feedback(request, context):
     form_data = parse.parse_qsl(request["body"])
 
     params = {key: value for key, value in form_data}
+
     page = params["url"]
-    project = determine_project(page)
     params["helpful"] = str2bool(params["helpful"])
     params["userAgent"] = request["headers"]["User-Agent"]
     params["referer"] = request["headers"]["Referer"]
+
+    if params["project"]:
+        project = params["project"]
+    else:
+        project = determine_project(page)
 
     print(page, params)
 
@@ -189,11 +194,11 @@ def fire_api(event, context):
         result = session.run("""
         MATCH (project:Project {name: $project})<-[:PROJECT]-(page:Page)-[:HAS_FEEDBACK]->(feedback)
         WITH page, collect(feedback) AS allFeedback
-        WITH page, 
-             size([f in allFeedback WHERE f.helpful]) AS helpful, 
+        WITH page,
+             size([f in allFeedback WHERE f.helpful]) AS helpful,
              size([f in allFeedback WHERE not(f.helpful)]) AS notHelpful
         WHERE notHelpful > 0
-        
+
         WITH page, helpful, notHelpful,
         helpful + notHelpful * 1.0 AS n
         WITH page, helpful, notHelpful, n,
@@ -203,7 +208,7 @@ def fire_api(event, context):
         p + (1.0/(2*n))*(z*z) AS left,
         z*(sqrt((p*(1-p)/n) + (z*z)/(4*n*n))) AS right,
         1+(1/n*z*z) AS under
-        RETURN page, notHelpful, helpful, (left-right) / under AS unhelpfulness                
+        RETURN page, notHelpful, helpful, (left-right) / under AS unhelpfulness
         ORDER BY unhelpfulness desc
         """, {"project": project})
 
