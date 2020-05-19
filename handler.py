@@ -68,8 +68,10 @@ def feedback(request, context):
 
     page = params["url"]
     params["helpful"] = str2bool(params["helpful"])
-    params["userAgent"] = request["headers"]["User-Agent"]
-    params["referer"] = request["headers"]["Referer"]
+
+    headers = request["headers"]
+    params["userAgent"] = headers.get("User-Agent")
+    params["referer"] = headers.get("Referer")
 
     if params["project"]:
         project = params["project"]
