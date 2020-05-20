@@ -73,7 +73,7 @@ def feedback(request, context):
     params["userAgent"] = headers.get("User-Agent")
     params["referer"] = headers.get("Referer")
 
-    if params["project"]:
+    if "project" in params:
         project = params["project"]
     else:
         project = determine_project(page)
