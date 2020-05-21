@@ -56,6 +56,8 @@ def post_feedback(params):
 def determine_project(page):
     if "/docs/labs/neo4j-streams" in page:
         return "neo4j-streams"
+    if "grandstack.io" in page:
+        return "GRANDstack"
     return "apoc"
 
 
