@@ -36,7 +36,7 @@ password = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
 db_driver = GraphDatabase.driver(f"bolt+routing://{host_port}", auth=(user, password), max_retry_time=15)
 
 post_feedback_query = """
-MATCH (project:Project {name: $project})
+MERGE (project:Project {name: $project})
 MERGE (page:Page {uri: $page})
 MERGE (page)-[:PROJECT]->(project)
 CREATE (feedback:Feedback)
