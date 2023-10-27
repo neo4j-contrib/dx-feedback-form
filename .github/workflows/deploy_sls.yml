@@ -49,6 +49,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Check Python version
+        run: python --version
+
+      - name: Test install requirements
+        run: python -m pip install -r requirements.txt
+
       - name: Install Serverless dependencies
         run: npm i
 
