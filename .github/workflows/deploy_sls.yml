@@ -1,0 +1,56 @@
+name: Deploy Lambda functions
+
+on:
+  push:
+    branches:
+#      - master
+      - dev
+
+env:
+  NODE_VERSION: 18.x
+
+jobs:
+  set_environment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up environment based on branch
+        id: environment_check
+        run: |
+          SIMPLE_REF=$(echo ${GITHUB_REF#refs/heads/} | tr / -)
+          [ "$SIMPLE_REF" = "master" ] && ENV_NAME="prod" || ENV_NAME="$SIMPLE_REF"
+
+          echo "env_name=${ENV_NAME}" >> $GITHUB_OUTPUT
+
+    outputs:
+      env_name: ${{ steps.environment_check.outputs.env_name }}
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [set_environment]
+    permissions:
+      id-token: write
+      contents: read
+
+    environment:
+      name: ${{ needs.set_environment.outputs.env_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.GH_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Serverless dependencies
+        run: npm i
+
+      - name: Deploy Serverless Lambda functions
+        run: npx sls deploy --stage ${{ needs.set_environment.outputs.env_name }}

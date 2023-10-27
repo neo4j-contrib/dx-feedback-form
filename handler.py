@@ -49,7 +49,7 @@ CREATE (page)-[:HAS_FEEDBACK]->(feedback)
 def post_feedback(params):
     with db_driver.session() as session:
         result = session.run(post_feedback_query, params)
-        print(result.summary().counters)
+        print(result.consume().counters)
         return True
 
 
