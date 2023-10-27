@@ -2,10 +2,9 @@ service: labs-feedback
 
 frameworkVersion: "3"
 
-#custom:
-#  stage: "${opt:stage, self:provider.stage}"
-#  pythonRequirements:
-#    dockerizePip: non-linux
+custom:
+  pythonRequirements:
+    dockerizePip: non-linux
 
 provider:
   name: aws
