@@ -2,10 +2,6 @@ service: labs-feedback
 
 frameworkVersion: "3"
 
-custom:
-  pythonRequirements:
-    dockerizePip: non-linux
-
 provider:
   name: aws
   runtime: python3.11
