@@ -2,6 +2,10 @@ service: labs-feedback
 
 frameworkVersion: "3"
 
+custom:
+  pythonRequirements:
+    pythonBin: python
+
 provider:
   name: aws
   runtime: python3.11
