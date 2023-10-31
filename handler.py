@@ -33,7 +33,7 @@ host_port = get_ssm_param('com.neo4j.labs.feedback.dbhostport')
 user = get_ssm_param('com.neo4j.labs.feedback.dbuser')
 password = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
 
-db_driver = GraphDatabase.driver(f"bolt+routing://{host_port}", auth=(user, password), max_retry_time=15)
+db_driver = GraphDatabase.driver(f"neo4j+s://{host_port}", auth=(user, password))
 
 post_feedback_query = """
 MATCH (project:Project {name: $project})
