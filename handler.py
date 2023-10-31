@@ -3,9 +3,7 @@ import datetime
 import json
 import logging
 from urllib import parse
-
 import boto3
-import flask
 from dateutil import parser
 from neo4j import GraphDatabase
 
