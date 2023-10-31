@@ -92,8 +92,13 @@ def feedback(request, context):
 
 
 def feedback_api(event, context):
-    path_parameters = event.get("pathParameters")
+    '''headers = event.get('headers')
+    if headers.get('X-Neo-Feedback') == None:  # some secrecy
+        return {
+            "statusCode": 403
+        }'''
 
+    path_parameters = event.get("pathParameters")
     if not path_parameters:
         return {
             "statusCode": 404
