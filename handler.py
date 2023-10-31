@@ -39,27 +39,13 @@ password = 'verysecret'
 
 db_driver = GraphDatabase.driver(host, auth=(user, password))
 
-post_feedback_query = """
-MATCH (project:Project {name: $project})
-MERGE (page:Page {uri: $page})
-MERGE (page)-[:PROJECT]->(project)
-CREATE (feedback:Feedback)
-SET feedback += $params, feedback.timestamp = datetime()
-CREATE (page)-[:HAS_FEEDBACK]->(feedback)
-"""
-
-
-def post_feedback(params):
-    _, summary, _ = db_driver.execute_query(post_feedback_query, params, database_='neo4j')
-    print(summary.counters)
-
 
 def determine_project(params):
-    if "project" in params["url"]:
+    if "project" in params.keys():
         return params["project"]
-    if "/docs/labs/neo4j-streams" in page["url"]:
+    if "/docs/labs/neo4j-streams" in params["url"]:
         return "neo4j-streams"
-    if "grandstack.io" in page["url"]:
+    if "grandstack.io" in params["url"]:
         return "GRANDstack"
     return ""
 
@@ -68,20 +54,32 @@ def feedback(request, context):
     print("request:", request, "context:", context)
 
     form_data = parse.parse_qsl(request["body"])
+    headers = request["headers"]
 
-    params = {key: value for key, value in form_data}
+    fields_whitelist = [
+        'project', 'url', 'identity', 'gid', 'uetsid', 'helpful',
+        'moreInformation', 'reason', 'userJourney'
+    ]
+
+    params = {key: value for key, value in form_data if key in fields_whitelist}
 
     project = determine_project(params)
-    page = params["url"]
     params["helpful"] = str2bool(params["helpful"])
-
-    headers = request["headers"]
     params["userAgent"] = headers.get("User-Agent")
     params["referer"] = headers.get("Referer")
 
-    print(page, params)
+    print(f'Project `{project}`, query parameters: {params}')
 
-    post_feedback({"params": params, "page": page, "project": project})
+    _, summary, _ = db_driver.execute_query("""
+        MATCH (project:Project {name: $project})
+        MERGE (page:Page {uri: $url})
+        MERGE (page)-[:PROJECT]->(project)
+        CREATE (feedback:Feedback)
+        SET feedback += $params, feedback.timestamp = datetime()
+        CREATE (page)-[:HAS_FEEDBACK]->(feedback)
+        """, project=project, url=params['url'], params=params,
+        database_='neo4j')
+    print(f'Feedback stored: {summary.counters}')
 
     return {
         "statusCode": 200,
@@ -109,24 +107,26 @@ def feedback_api(event, context):
     else:
         now = datetime.datetime.now().replace(day=1)
 
-    logger.info(f"Retrieving feedback for {now}")
+    params = {"year": now.year, "month": now.month, "project": project}
 
-    with db_driver.session() as session:
-        params = {"year": now.year, "month": now.month, "project": project}
-        result = session.run("""
+    logger.info(f"Retrieving feedback for {params}")
+
+    result, _, _ = db_driver.execute_query("""
         MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page)-[:PROJECT]->(:Project {name: $project})
-        WHERE datetime({year:$year, month:$month+1}) > feedback.timestamp >= datetime({year:$year, month:$month })
+        WHERE datetime({year:$year, month:$month+1}) > feedback.timestamp >= datetime({year:$year, month:$month})
         RETURN feedback, page
         ORDER BY feedback.timestamp DESC
-        """, params)
-
-        rows = [{"helpful": row["feedback"]["helpful"],
-                 "information": row["feedback"]["moreInformation"],
-                 "reason": row["feedback"]["reason"],
-                 "uri": row["page"]["uri"],
-                 "date": row["feedback"]["timestamp"].to_native().strftime("%d %b %Y")
-                 }
-                for row in result]
+        """, params, database_ = 'neo4j')
+    rows = [
+        {
+            "helpful": row["feedback"]["helpful"],
+            "information": row["feedback"]["moreInformation"],
+            "reason": row["feedback"]["reason"],
+            "userJourney": row["feedback"]["userJourney"],
+            "uri": row["page"]["uri"],
+            "date": row["feedback"]["timestamp"].to_native().strftime("%d %b %Y")
+         }
+    for row in result]
 
     response = {
         "statusCode": 200,
