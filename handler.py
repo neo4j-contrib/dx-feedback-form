@@ -8,7 +8,6 @@ import boto3
 import flask
 from dateutil import parser
 from neo4j import GraphDatabase
-from retrying import retry
 
 ssmc = boto3.client('ssm')
 app = flask.Flask('feedback form')
@@ -29,11 +28,16 @@ def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
 
-host_port = get_ssm_param('com.neo4j.labs.feedback.dbhostport')
+'''
+# `dbhostport` contains host:port, but lacks protocol. It is an Aura instance, so it is neo4j+s
+host = 'neo4j+s://' + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
 user = get_ssm_param('com.neo4j.labs.feedback.dbuser')
-password = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
+password = get_ssm_param('com.neo4j.labs.feedback.dbpassword')'''
+host = 'neo4j://localhost'
+user = 'neo4j'
+password = 'verysecret'
 
-db_driver = GraphDatabase.driver(f"neo4j+s://{host_port}", auth=(user, password))
+db_driver = GraphDatabase.driver(host, auth=(user, password))
 
 post_feedback_query = """
 MATCH (project:Project {name: $project})
@@ -45,20 +49,19 @@ CREATE (page)-[:HAS_FEEDBACK]->(feedback)
 """
 
 
-@retry(stop_max_attempt_number=5, wait_random_max=1000)
 def post_feedback(params):
-    with db_driver.session() as session:
-        result = session.run(post_feedback_query, params)
-        print(result.consume().counters)
-        return True
+    _, summary, _ = db_driver.execute_query(post_feedback_query, params, database_='neo4j')
+    print(summary.counters)
 
 
-def determine_project(page):
-    if "/docs/labs/neo4j-streams" in page:
+def determine_project(params):
+    if "project" in params["url"]:
+        return params["project"]
+    if "/docs/labs/neo4j-streams" in page["url"]:
         return "neo4j-streams"
-    if "grandstack.io" in page:
+    if "grandstack.io" in page["url"]:
         return "GRANDstack"
-    return "apoc"
+    return ""
 
 
 def feedback(request, context):
@@ -68,17 +71,13 @@ def feedback(request, context):
 
     params = {key: value for key, value in form_data}
 
+    project = determine_project(params)
     page = params["url"]
     params["helpful"] = str2bool(params["helpful"])
 
     headers = request["headers"]
     params["userAgent"] = headers.get("User-Agent")
     params["referer"] = headers.get("Referer")
-
-    if "project" in params:
-        project = params["project"]
-    else:
-        project = determine_project(page)
 
     print(page, params)
 
