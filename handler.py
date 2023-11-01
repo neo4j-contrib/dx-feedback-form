@@ -69,6 +69,21 @@ def feedback(request, context):
 
     print(f'Project `{project}`, query parameters: {params}')
 
+    result, _, _ = db_driver.execute_query("""
+        MATCH (feedback:Feedback)
+        WHERE feedback.url = $url AND feedback.helpful = $params.helpful AND
+              feedback.userAgent = $params.userAgent AND
+              datetime.truncate('minute', feedback.timestamp) = datetime.truncate('minute')
+        RETURN feedback
+        """, project=project, url=params['url'], params=params,
+        database_='neo4j')
+    if len(result) > 0:
+        print('Duplicate request within same minute')
+        print(result)
+        return {
+            "statusCode": 403
+        }
+
     _, summary, _ = db_driver.execute_query("""
         MATCH (project:Project {name: $project})
         MERGE (page:Page {uri: $url})
