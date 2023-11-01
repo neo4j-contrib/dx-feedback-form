@@ -2,9 +2,9 @@ import base64
 import datetime
 import json
 import logging
-import flask
 from urllib import parse
 import boto3
+import flask
 from dateutil import parser
 from neo4j import GraphDatabase
 
@@ -27,16 +27,12 @@ def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
 
-'''
 # `dbhostport` contains host:port, but lacks protocol. It is an Aura instance, so it is neo4j+s
-host = 'neo4j+s://' + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
-user = get_ssm_param('com.neo4j.labs.feedback.dbuser')
-password = get_ssm_param('com.neo4j.labs.feedback.dbpassword')'''
-host = 'neo4j://localhost'
-user = 'neo4j'
-password = 'verysecret'
+HOST = 'neo4j+s://' + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
+USER = get_ssm_param('com.neo4j.labs.feedback.dbuser')
+PASSWORD = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
 
-db_driver = GraphDatabase.driver(host, auth=(user, password))
+driver = GraphDatabase.driver(HOST, auth=(USER, PASSWORD))
 
 
 def determine_project(params):
@@ -69,7 +65,7 @@ def feedback(request, context):
 
     print(f'Project `{project}`, query parameters: {params}')
 
-    result, _, _ = db_driver.execute_query("""
+    result, _, _ = driver.execute_query("""
         MATCH (feedback:Feedback)
         WHERE feedback.url = $url AND feedback.helpful = $params.helpful AND
               feedback.userAgent = $params.userAgent AND
@@ -84,7 +80,7 @@ def feedback(request, context):
             "statusCode": 403
         }
 
-    _, summary, _ = db_driver.execute_query("""
+    _, summary, _ = driver.execute_query("""
         MATCH (project:Project {name: $project})
         MERGE (page:Page {uri: $url})
         MERGE (page)-[:PROJECT]->(project)
@@ -130,7 +126,7 @@ def feedback_api(event, context):
 
     logger.info(f"Retrieving feedback for {params}")
 
-    result, _, _ = db_driver.execute_query("""
+    result, _, _ = driver.execute_query("""
         MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page)-[:PROJECT]->(:Project {name: $project})
         WHERE datetime({year:$year, month:$month+1}) > feedback.timestamp >= datetime({year:$year, month:$month})
         RETURN feedback, page
@@ -188,7 +184,7 @@ def page_api(event, context):
     page = base64.b64decode(encoded_page).decode("utf-8")
 
     logger.info(f"page: {page}")
-    with db_driver.session() as session:
+    with driver.session() as session:
         params = {"page": page}
         result = session.run("""
         MATCH (page {uri: $page})
@@ -228,7 +224,7 @@ def fire_api(event, context):
 
     project = path_parameters.get("project").replace("@graphapps-", "@graphapps/")
 
-    with db_driver.session() as session:
+    with driver.session() as session:
         result = session.run("""
         MATCH (project:Project {name: $project})<-[:PROJECT]-(page:Page)-[:HAS_FEEDBACK]->(feedback)
         WITH page, collect(feedback) AS allFeedback
