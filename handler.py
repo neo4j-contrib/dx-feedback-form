@@ -2,6 +2,7 @@ import base64
 import datetime
 import json
 import logging
+import flask
 from urllib import parse
 import boto3
 from dateutil import parser
@@ -125,7 +126,7 @@ def feedback_api(event, context):
             "helpful": row["feedback"]["helpful"],
             "information": row["feedback"]["moreInformation"],
             "reason": row["feedback"]["reason"],
-            "userJourney": row["feedback"]["userJourney"],
+            "userJourney": prettify_journey(row["feedback"]["userJourney"]),
             "uri": row["page"]["uri"],
             "date": row["feedback"]["timestamp"].to_native().strftime("%d %b %Y")
          }
@@ -142,6 +143,22 @@ def feedback_api(event, context):
 
     return response
 
+
+def prettify_journey(journey):
+    if journey == None:
+        return journey
+
+    ret = ''
+    journey = json.loads(journey)
+    for i in range(len(journey)):
+        if i > 0:
+            ret += ' '*(i-1) + '↳ '
+        if i < len(journey)-1:
+            ret += '(' + str(journey[i+1]['landTime'] - journey[i]['landTime']) + 's) '
+        ret += journey[i]['title']
+        ret += '\n'
+
+    return ret
 
 def page_api(event, context):
     logger.info(f"event: {event}, context: {context}")
