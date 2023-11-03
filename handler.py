@@ -6,6 +6,7 @@ from urllib import parse
 import boto3
 import flask
 from dateutil import parser
+from urllib.parse import urlparse
 from neo4j import GraphDatabase
 
 ssmc = boto3.client('ssm')
@@ -166,7 +167,7 @@ def prettify_journey(journey):
             ret += ' '*(i-1) + '↳ '
         if i < len(journey)-1:
             ret += '(' + str(journey[i+1]['landTime'] - journey[i]['landTime']) + 's) '
-        ret += journey[i]['title']
+        ret += urlparse(journey[i]['url']).path
         ret += '\n'
 
     return ret
