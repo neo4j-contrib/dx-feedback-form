@@ -46,7 +46,7 @@ def determine_project(params):
 
 
 def feedback(request, context):
-    logger.info("request:", request, "context:", context)
+    print("request:", request, "context:", context)
 
     form_data = parse.parse_qsl(request["body"])
     headers = request["headers"]
@@ -172,7 +172,7 @@ def prettify_journey(journey):
     return ret
 
 def page_api(event, context):
-    logger.info(f"event: {event}, context: {context}")
+    print(f"event: {event}, context: {context}")
     path_parameters = event.get("pathParameters")
 
     if not path_parameters:
