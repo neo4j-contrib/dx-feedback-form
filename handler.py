@@ -3,12 +3,10 @@ import datetime
 import json
 import logging
 from urllib import parse
-
 import boto3
 import flask
 from dateutil import parser
 from neo4j import GraphDatabase
-from retrying import retry
 
 ssmc = boto3.client('ssm')
 app = flask.Flask('feedback form')
@@ -29,60 +27,69 @@ def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
 
-host_port = get_ssm_param('com.neo4j.labs.feedback.dbhostport')
-user = get_ssm_param('com.neo4j.labs.feedback.dbuser')
-password = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
+# `dbhostport` contains host:port, but lacks protocol. It is an Aura instance, so it is neo4j+s
+HOST = 'neo4j+s://' + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
+USER = get_ssm_param('com.neo4j.labs.feedback.dbuser')
+PASSWORD = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
 
-db_driver = GraphDatabase.driver(f"neo4j+s://{host_port}", auth=(user, password))
-
-post_feedback_query = """
-MATCH (project:Project {name: $project})
-MERGE (page:Page {uri: $page})
-MERGE (page)-[:PROJECT]->(project)
-CREATE (feedback:Feedback)
-SET feedback += $params, feedback.timestamp = datetime()
-CREATE (page)-[:HAS_FEEDBACK]->(feedback)
-"""
+driver = GraphDatabase.driver(HOST, auth=(USER, PASSWORD))
 
 
-@retry(stop_max_attempt_number=5, wait_random_max=1000)
-def post_feedback(params):
-    with db_driver.session() as session:
-        result = session.run(post_feedback_query, params)
-        print(result.consume().counters)
-        return True
-
-
-def determine_project(page):
-    if "/docs/labs/neo4j-streams" in page:
+def determine_project(params):
+    if "project" in params.keys():
+        return params["project"]
+    if "/docs/labs/neo4j-streams" in params["url"]:
         return "neo4j-streams"
-    if "grandstack.io" in page:
+    if "grandstack.io" in params["url"]:
         return "GRANDstack"
-    return "apoc"
+    return ""
 
 
 def feedback(request, context):
-    print("request:", request, "context:", context)
+    logger.info("request:", request, "context:", context)
 
     form_data = parse.parse_qsl(request["body"])
-
-    params = {key: value for key, value in form_data}
-
-    page = params["url"]
-    params["helpful"] = str2bool(params["helpful"])
-
     headers = request["headers"]
+
+    fields_whitelist = [
+        'project', 'url', 'identity', 'gid', 'uetsid', 'helpful',
+        'moreInformation', 'reason', 'userJourney'
+    ]
+
+    params = {key: value for key, value in form_data if key in fields_whitelist}
+
+    project = determine_project(params)
+    params["helpful"] = str2bool(params["helpful"])
     params["userAgent"] = headers.get("User-Agent")
     params["referer"] = headers.get("Referer")
 
-    if "project" in params:
-        project = params["project"]
-    else:
-        project = determine_project(page)
+    logger.info(f'Project `{project}`, query parameters: {params}')
 
-    print(page, params)
+    result, _, _ = driver.execute_query("""
+        MATCH (feedback:Feedback)
+        WHERE feedback.url = $url AND feedback.helpful = $params.helpful AND
+              feedback.userAgent = $params.userAgent AND
+              datetime.truncate('minute', feedback.timestamp) = datetime.truncate('minute')
+        RETURN feedback
+        """, project=project, url=params['url'], params=params,
+        database_='neo4j')
+    if len(result) > 0:
+        logger.info('Duplicate request within same minute')
+        logger.info(result)
+        return {
+            "statusCode": 403
+        }
 
-    post_feedback({"params": params, "page": page, "project": project})
+    _, summary, _ = driver.execute_query("""
+        MATCH (project:Project {name: $project})
+        MERGE (page:Page {uri: $url})
+        MERGE (page)-[:PROJECT]->(project)
+        CREATE (feedback:Feedback)
+        SET feedback += $params, feedback.timestamp = datetime()
+        CREATE (page)-[:HAS_FEEDBACK]->(feedback)
+        """, project=project, url=params['url'], params=params,
+        database_='neo4j')
+    logger.info(f'Feedback stored: {summary.counters}')
 
     return {
         "statusCode": 200,
@@ -95,8 +102,13 @@ def feedback(request, context):
 
 
 def feedback_api(event, context):
-    path_parameters = event.get("pathParameters")
+    '''headers = event.get('headers')
+    if headers.get('X-Neo-Feedback') == None:  # some secrecy
+        return {
+            "statusCode": 403
+        }'''
 
+    path_parameters = event.get("pathParameters")
     if not path_parameters:
         return {
             "statusCode": 404
@@ -110,24 +122,26 @@ def feedback_api(event, context):
     else:
         now = datetime.datetime.now().replace(day=1)
 
-    logger.info(f"Retrieving feedback for {now}")
+    params = {"year": now.year, "month": now.month, "project": project}
 
-    with db_driver.session() as session:
-        params = {"year": now.year, "month": now.month, "project": project}
-        result = session.run("""
-        MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page)-[:PROJECT]->(:Project {name: $project})
-        WHERE datetime({year:$year, month:$month+1}) > feedback.timestamp >= datetime({year:$year, month:$month })
+    logger.info(f"Retrieving feedback for {params}")
+
+    result, _, _ = driver.execute_query("""
+        MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page:Page)-[:PROJECT]->(:Project {name: $project})
+        WHERE datetime({year:$year, month:$month+1}) > feedback.timestamp >= datetime({year:$year, month:$month})
         RETURN feedback, page
         ORDER BY feedback.timestamp DESC
-        """, params)
-
-        rows = [{"helpful": row["feedback"]["helpful"],
-                 "information": row["feedback"]["moreInformation"],
-                 "reason": row["feedback"]["reason"],
-                 "uri": row["page"]["uri"],
-                 "date": row["feedback"]["timestamp"].to_native().strftime("%d %b %Y")
-                 }
-                for row in result]
+        """, params, database_='neo4j')
+    rows = [
+        {
+            "helpful": row["feedback"]["helpful"],
+            "information": row["feedback"]["moreInformation"],
+            "reason": row["feedback"]["reason"],
+            "userJourney": prettify_journey(row["feedback"]["userJourney"]),
+            "uri": row["page"]["uri"],
+            "date": row["feedback"]["timestamp"].to_native().strftime("%d %b %Y")
+         }
+    for row in result]
 
     response = {
         "statusCode": 200,
@@ -140,6 +154,22 @@ def feedback_api(event, context):
 
     return response
 
+
+def prettify_journey(journey):
+    if journey == None:
+        return journey
+
+    ret = ''
+    journey = json.loads(journey)
+    for i in range(len(journey)):
+        if i > 0:
+            ret += ' '*(i-1) + '↳ '
+        if i < len(journey)-1:
+            ret += '(' + str(journey[i+1]['landTime'] - journey[i]['landTime']) + 's) '
+        ret += journey[i]['title']
+        ret += '\n'
+
+    return ret
 
 def page_api(event, context):
     logger.info(f"event: {event}, context: {context}")
@@ -154,23 +184,23 @@ def page_api(event, context):
     page = base64.b64decode(encoded_page).decode("utf-8")
 
     logger.info(f"page: {page}")
-    with db_driver.session() as session:
-        params = {"page": page}
-        result = session.run("""
-        MATCH (page {uri: $page})
-        RETURN page, [(page)-[:HAS_FEEDBACK]->(feedback) | feedback] AS feedback
-        """, params)
 
-        rows = [{"uri": row["page"]["uri"],
-                 "feedback": [{
-                     "helpful": entry["helpful"],
-                     "information": entry["moreInformation"],
-                     "reason": entry["reason"],
-                     "date": entry["timestamp"].to_native().strftime("%d %b %Y")
-                 }
-                     for entry in row["feedback"]
-                 ]}
-                for row in result]
+    result, _, _ = driver.execute_query("""
+        MATCH (page:Page {uri: $page})
+        RETURN page, [(page)-[:HAS_FEEDBACK]->(feedback) | feedback] AS feedback
+        """, page=page, database_='neo4j')
+    rows = [
+        {
+            "uri": row["page"]["uri"],
+             "feedback": [{
+                 "helpful": entry["helpful"],
+                 "information": entry["moreInformation"],
+                 "reason": entry["reason"],
+                 "date": entry["timestamp"].to_native().strftime("%d %b %Y")
+             }
+             for entry in row["feedback"]]
+         }
+    for row in result]
 
     response = {
         "statusCode": 200,
@@ -194,8 +224,7 @@ def fire_api(event, context):
 
     project = path_parameters.get("project").replace("@graphapps-", "@graphapps/")
 
-    with db_driver.session() as session:
-        result = session.run("""
+    result, _, _ = driver.execute_query("""
         MATCH (project:Project {name: $project})<-[:PROJECT]-(page:Page)-[:HAS_FEEDBACK]->(feedback)
         WITH page, collect(feedback) AS allFeedback
         WITH page,
@@ -214,14 +243,15 @@ def fire_api(event, context):
         1+(1/n*z*z) AS under
         RETURN page, notHelpful, helpful, (left-right) / under AS unhelpfulness
         ORDER BY unhelpfulness desc
-        """, {"project": project})
-
-        rows = [{"uri": row["page"]["uri"],
-                 "helpful": row["helpful"],
-                 "notHelpful": row["notHelpful"],
-                 "unhelpfulness": row["unhelpfulness"]
-                 }
-                for row in result]
+        """, project=project, database_='neo4j')
+    rows = [
+        {
+            "uri": row["page"]["uri"],
+            "helpful": row["helpful"],
+            "notHelpful": row["notHelpful"],
+            "unhelpfulness": row["unhelpfulness"]
+         }
+    for row in result]
 
     response = {
         "statusCode": 200,
