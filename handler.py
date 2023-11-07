@@ -139,6 +139,7 @@ def feedback_api(event, context):
             "information": row["feedback"]["moreInformation"],
             "reason": row["feedback"]["reason"],
             "userJourney": prettify_journey(row["feedback"]["userJourney"]),
+            "sessionDuration": session_duration(row["feedback"]["userJourney"]),
             "uri": row["page"]["uri"],
             "date": row["feedback"]["timestamp"].to_native().strftime("%d %b %Y")
          }
@@ -171,6 +172,18 @@ def prettify_journey(journey):
         ret += '\n'
 
     return ret
+
+def session_duration(journey):
+    if journey == None:
+        return journey
+
+    dur = 0
+    journey = json.loads(journey)
+    for i in range(len(journey)):
+        if i < len(journey)-1:
+            dur += journey[i+1]['landTime'] - journey[i]['landTime']
+
+    return dur
 
 def page_api(event, context):
     print(f"event: {event}, context: {context}")
