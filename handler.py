@@ -34,6 +34,11 @@ HOST = 'neo4j+s://' + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
 USER = get_ssm_param('com.neo4j.labs.feedback.dbuser')
 PASSWORD = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
 
+
+HOST = 'neo4j+s://27a749ac.databases.neo4j.io'# + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
+USER = 'neo4j'#get_ssm_param('com.neo4j.labs.feedback.dbuser')
+PASSWORD = 'M5A9dsAdHxLx-Zdoos5GJwq0MvEHFzufbMB2TV5D1MM'
+
 driver = GraphDatabase.driver(HOST, auth=(USER, PASSWORD))
 
 
@@ -123,12 +128,13 @@ def feedback_api(event, context):
         now = parser.parse(qs["date"][0])
     else:
         now = datetime.datetime.now().replace(day=1)
-    next_month = (now + relativedelta(months=1)).month
+    next_month = (now + relativedelta(months=1))
 
     params = {
         "year": now.year,
         "month": now.month,
-        "next_month": next_month,
+        "next_year": next_month.year,
+        "next_month": next_month.month,
         "project": project
     }
 
@@ -136,7 +142,7 @@ def feedback_api(event, context):
 
     result, _, _ = driver.execute_query("""
         MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page:Page)-[:PROJECT]->(:Project {name: $project})
-        WHERE datetime({year:$year, month:$next_month}) > feedback.timestamp >= datetime({year:$year, month:$month})
+        WHERE datetime({year:$next_year, month:$next_month}) > feedback.timestamp >= datetime({year:$year, month:$month})
         RETURN feedback, page
         ORDER BY feedback.timestamp DESC
         """, params, database_='neo4j')
