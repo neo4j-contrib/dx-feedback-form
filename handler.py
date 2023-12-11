@@ -123,7 +123,7 @@ def feedback_api(event, context):
         now = parser.parse(qs["date"][0])
     else:
         now = datetime.datetime.now().replace(day=1)
-    next_month = now + relativedelta(months=1)
+    next_month = (now + relativedelta(months=1)).month
 
     params = {
         "year": now.year,
