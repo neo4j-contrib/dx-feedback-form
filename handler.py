@@ -1,11 +1,12 @@
 import base64
-import datetime
+from datetime import datetime
 import json
 import logging
 from urllib import parse
 import boto3
 import flask
 from dateutil import parser
+from dateutil.relativedelta import relativedelta
 from urllib.parse import urlparse
 from neo4j import GraphDatabase
 
@@ -122,14 +123,20 @@ def feedback_api(event, context):
         now = parser.parse(qs["date"][0])
     else:
         now = datetime.datetime.now().replace(day=1)
+    next_month = now + relativedelta(months=1)
 
-    params = {"year": now.year, "month": now.month, "project": project}
+    params = {
+        "year": now.year,
+        "month": now.month,
+        "next_month": next_month,
+        "project": project
+    }
 
     logger.info(f"Retrieving feedback for {params}")
 
     result, _, _ = driver.execute_query("""
         MATCH (feedback:Feedback)<-[:HAS_FEEDBACK]-(page:Page)-[:PROJECT]->(:Project {name: $project})
-        WHERE datetime({year:$year, month:$month+1}) > feedback.timestamp >= datetime({year:$year, month:$month})
+        WHERE datetime({year:$year, month:$next_month}) > feedback.timestamp >= datetime({year:$year, month:$month})
         RETURN feedback, page
         ORDER BY feedback.timestamp DESC
         """, params, database_='neo4j')
