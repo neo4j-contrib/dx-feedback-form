@@ -34,11 +34,6 @@ HOST = 'neo4j+s://' + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
 USER = get_ssm_param('com.neo4j.labs.feedback.dbuser')
 PASSWORD = get_ssm_param('com.neo4j.labs.feedback.dbpassword')
 
-
-HOST = 'neo4j+s://27a749ac.databases.neo4j.io'# + get_ssm_param('com.neo4j.labs.feedback.dbhostport')
-USER = 'neo4j'#get_ssm_param('com.neo4j.labs.feedback.dbuser')
-PASSWORD = 'M5A9dsAdHxLx-Zdoos5GJwq0MvEHFzufbMB2TV5D1MM'
-
 driver = GraphDatabase.driver(HOST, auth=(USER, PASSWORD))
 
 
